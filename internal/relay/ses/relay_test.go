@@ -8,22 +8,22 @@ import (
 	"regexp"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/service/ses"
-	"github.com/aws/aws-sdk-go/service/ses/sesiface"
+	"github.com/aws/aws-sdk-go/service/sesv2"
+	"github.com/aws/aws-sdk-go/service/sesv2/sesv2iface"
 	"github.com/blueimp/aws-smtp-relay/internal/relay"
 )
 
 var testData = struct {
-	input *ses.SendRawEmailInput
+	input *sesv2.SendEmailInput
 	err   error
 }{}
 
 type mockSESAPI struct {
-	sesiface.SESAPI
+	sesv2iface.SESV2API
 }
 
-func (m *mockSESAPI) SendRawEmail(input *ses.SendRawEmailInput) (
-	*ses.SendRawEmailOutput,
+func (m *mockSESAPI) SendEmail(input *sesv2.SendEmailInput) (
+	*sesv2.SendEmailOutput,
 	error,
 ) {
 	testData.input = input
@@ -39,7 +39,7 @@ func sendHelper(
 	allowFromRegExp *regexp.Regexp,
 	denyToRegExp *regexp.Regexp,
 	apiErr error,
-) (email *ses.SendRawEmailInput, out []byte, err []byte, sendErr error) {
+) (email *sesv2.SendEmailInput, out []byte, err []byte, sendErr error) {
 	outReader, outWriter, _ := os.Pipe()
 	errReader, errWriter, _ := os.Pipe()
 	originalOut := os.Stdout
@@ -76,28 +76,28 @@ func TestSend(t *testing.T) {
 	data := []byte{'T', 'E', 'S', 'T'}
 	setName := ""
 	input, out, err, _ := sendHelper(&origin, from, to, data, &setName, nil, nil, nil)
-	if *input.Source != from {
+	if *input.FromEmailAddress != from {
 		t.Errorf(
 			"Unexpected source: %s. Expected: %s",
-			*input.Source,
+			*input.FromEmailAddress,
 			from,
 		)
 	}
-	if len(input.Destinations) != 1 {
+	if len(input.Destination.ToAddresses) != 1 {
 		t.Errorf(
 			"Unexpected number of destinations: %d. Expected: %d",
-			len(input.Destinations),
+			len(input.Destination.ToAddresses),
 			1,
 		)
 	}
-	if *input.Destinations[0] != to[0] {
+	if *input.Destination.ToAddresses[0] != to[0] {
 		t.Errorf(
 			"Unexpected destination: %s. Expected: %s",
-			*input.Destinations[0],
+			*input.Destination.ToAddresses[0],
 			to[0],
 		)
 	}
-	inputData := string(input.RawMessage.Data)
+	inputData := string(input.Content.Raw.Data)
 	if inputData != "TEST" {
 		t.Errorf("Unexpected data: %s. Expected: %s", inputData, "TEST")
 	}
@@ -116,17 +116,17 @@ func TestSendWithMultipleRecipients(t *testing.T) {
 	data := []byte{'T', 'E', 'S', 'T'}
 	setName := ""
 	input, out, err, _ := sendHelper(&origin, from, to, data, &setName, nil, nil, nil)
-	if len(input.Destinations) != 2 {
+	if len(input.Destination.ToAddresses) != 2 {
 		t.Errorf(
 			"Unexpected number of destinations: %d. Expected: %d",
-			len(input.Destinations),
+			len(input.Destination.ToAddresses),
 			2,
 		)
 	}
-	if *input.Destinations[0] != to[0] {
+	if *input.Destination.ToAddresses[0] != to[0] {
 		t.Errorf(
 			"Unexpected destination: %s. Expected: %s",
-			*input.Destinations[0],
+			*input.Destination.ToAddresses[0],
 			to[0],
 		)
 	}
@@ -149,7 +149,7 @@ func TestSendWithDeniedSender(t *testing.T) {
 	if input != nil {
 		t.Errorf(
 			"Unexpected number of destinations: %d. Expected: %d",
-			len(input.Destinations),
+			len(input.Destination.ToAddresses),
 			0,
 		)
 	}
@@ -172,17 +172,17 @@ func TestSendWithDeniedRecipient(t *testing.T) {
 	setName := ""
 	regexp, _ := regexp.Compile(`^bob@example\.org$`)
 	input, out, err, sendErr := sendHelper(&origin, from, to, data, &setName, nil, regexp, nil)
-	if len(input.Destinations) != 1 {
+	if len(input.Destination.ToAddresses) != 1 {
 		t.Errorf(
 			"Unexpected number of destinations: %d. Expected: %d",
-			len(input.Destinations),
+			len(input.Destination.ToAddresses),
 			1,
 		)
 	}
-	if *input.Destinations[0] != to[1] {
+	if *input.Destination.ToAddresses[0] != to[1] {
 		t.Errorf(
 			"Unexpected destination: %s. Expected: %s",
-			*input.Destinations[0],
+			*input.Destination.ToAddresses[0],
 			to[1],
 		)
 	}
@@ -205,28 +205,28 @@ func TestSendWithApiError(t *testing.T) {
 	setName := ""
 	apiErr := errors.New("API failure")
 	input, out, err, sendErr := sendHelper(&origin, from, to, data, &setName, nil, nil, apiErr)
-	if *input.Source != from {
+	if *input.FromEmailAddress != from {
 		t.Errorf(
 			"Unexpected source: %s. Expected: %s",
-			*input.Source,
+			*input.FromEmailAddress,
 			from,
 		)
 	}
-	if len(input.Destinations) != 1 {
+	if len(input.Destination.ToAddresses) != 1 {
 		t.Errorf(
 			"Unexpected number of destinations: %d. Expected: %d",
-			len(input.Destinations),
+			len(input.Destination.ToAddresses),
 			1,
 		)
 	}
-	if *input.Destinations[0] != to[0] {
+	if *input.Destination.ToAddresses[0] != to[0] {
 		t.Errorf(
 			"Unexpected destination: %s. Expected: %s",
-			*input.Destinations[0],
+			*input.Destination.ToAddresses[0],
 			to[0],
 		)
 	}
-	inputData := string(input.RawMessage.Data)
+	inputData := string(input.Content.Raw.Data)
 	if inputData != "TEST" {
 		t.Errorf("Unexpected data: %s. Expected: %s", inputData, "TEST")
 	}
